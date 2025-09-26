@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ovo vs Comidas - Joystick Duplo</title>
+  <style>
+    body {
+      background: #fffbe6;
+      font-family: sans-serif;
+      text-align: center;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #333;
+      background: #fefae0;
+      touch-action: none;
+    }
+    .joystick {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 50%;
+      touch-action: none;
+    }
+    .stick {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: #d4a373;
+      border-radius: 50%;
+      top: 30px;
+      left: 30px;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>🥚 Ovo vs Comidas 🍗</h1>
+  <p>Joystick esquerdo: mover | Joystick direito: atirar</p>
+  <canvas id="game" width="800" height="600"></canvas>
+
+  <div id="joystick-move" class="joystick" style="bottom: 40px; left: 40px;">
+    <div id="stick-move" class="stick"></div>
+  </div>
+  <div id="joystick-shoot" class="joystick" style="bottom: 40px; right: 40px;">
+    <div id="stick-shoot" class="stick"></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const player = { x: 400, y: 300, size: 30, speed: 3, color: "#ffb703" };
+    const bullets = [];
+    const enemies = [];
+
+    function spawnEnemy() {
+      enemies.push({
+        x: Math.random() * 760,
+        y: Math.random() * 560,
+        size: 40,
+        life: 3,
+        color: "#d62828"
+      });
+    }
+
+    for (let i = 0; i < 5; i++) spawnEnemy();
+
+    const joystickMove = { dx: 0, dy: 0 };
+    const joystickShoot = { dx: 0, dy: 0 };
+    let shootCooldown = 0;
+
+    function shoot(dx, dy) {
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      if (mag === 0) return;
+      bullets.push({
+        x: player.x + player.size / 2 - 5,
+        y: player.y + player.size / 2 - 5,
+        size: 10,
+        speed: 6,
+        dx: (dx / mag) * 6,
+        dy: (dy / mag) * 6,
+        color: "#fff"
+      });
+    }
+
+    function update() {
+      player.x += joystickMove.dx * player.speed;
+      player.y += joystickMove.dy * player.speed;
+
+      player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+
+      if (shootCooldown <= 0 && (joystickShoot.dx !== 0 || joystickShoot.dy !== 0)) {
+        shoot(joystickShoot.dx, joystickShoot.dy);
+        shootCooldown = 15;
+      } else {
+        shootCooldown--;
+      }
+
+      bullets.forEach(b => {
+        b.x += b.dx;
+        b.y += b.dy;
+      });
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          const e = enemies[j];
+          if (
+            b.x < e.x + e.size &&
+            b.x + b.size > e.x &&
+            b.y < e.y + e.size &&
+            b.y + b.size > e.y
+          ) {
+            e.life -= 1;
+            bullets.splice(i, 1);
+            if (e.life <= 0) enemies.splice(j, 1);
+            break;
+          }
+        }
+      }
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        if (
+          bullets[i].x < 0 || bullets[i].x > canvas.width ||
+          bullets[i].y < 0 || bullets[i].y > canvas.height
+        ) {
+          bullets.splice(i, 1);
+        }
+      }
+
+      if (enemies.length < 5) spawnEnemy();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.size, player.size);
+
+      bullets.forEach(b => {
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x + b.size / 2, b.y + b.size / 2, b.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      enemies.forEach(e => {
+        ctx.fillStyle = e.color;
+        ctx.fillRect(e.x, e.y, e.size, e.size);
+        ctx.fillStyle = "#000";
+        ctx.font = "14px sans-serif";
+        ctx.fillText(`Vida: ${e.life}`, e.x, e.y - 5);
+      });
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function setupJoystick(containerId, stickId, output) {
+      const stick = document.getElementById(stickId);
+      let dragging = false;
+
+      stick.addEventListener("touchstart", () => dragging = true);
+      stick.addEventListener("touchend", () => {
+        dragging = false;
+        stick.style.left = "30px";
+        stick.style.top = "30px";
+        output.dx = 0;
+        output.dy = 0;
+      });
+
+      stick.addEventListener("touchmove", (e) => {
+        if (!dragging) return;
+        const touch = e.touches[0];
+        const rect = document.getElementById(containerId).getBoundingClientRect();
+        const x = touch.clientX - rect.left - 20;
+        const y = touch.clientY - rect.top - 20;
+        const max = 40;
+        const dx = Math.max(-max, Math.min(max, x - 30));
+        const dy = Math.max(-max, Math.min(max, y - 30));
+        stick.style.left = `${30 + dx}px`;
+        stick.style.top = `${30 + dy}px`;
+        output.dx = dx / max;
+        output.dy = dy / max;
+      });
+    }
+
+    setupJoystick("joystick-move", "stick-move", joystickMove);
+    setupJoystick("joystick-shoot", "stick-shoot", joystickShoot);
+
+    loop();
+  </script>
+</body>
+</html>
